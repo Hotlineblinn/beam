@@ -1,6 +1,6 @@
 package beam.physsim.jdeqsim
 
-import beam.router.r5.WorkerParameters
+import beam.router.r5.R5Parameters
 import beam.sim.config.BeamConfig
 import beam.sim.{BeamConfigChangesObservable, BeamServices}
 import beam.utils.Statistics
@@ -25,7 +25,7 @@ class ApproxPhysSim(
   val agentSimScenario: Scenario,
   val population: Population,
   val beamServices: BeamServices,
-  val controlerIO: OutputDirectoryHierarchy,
+  val controllerIO: OutputDirectoryHierarchy,
   val isCACCVehicle: java.util.Map[String, java.lang.Boolean],
   val beamConfigChangesObservable: BeamConfigChangesObservable,
   val agentSimIterationNumber: Int,
@@ -69,7 +69,7 @@ class ApproxPhysSim(
   val rnd: Random = new Random(javaRnd)
   val shouldLogWhenLinksAreNotTheSame: Boolean = false
 
-  val workerParams: WorkerParameters = WorkerParameters(
+  val workerParams: R5Parameters = R5Parameters(
     beamConfig = beamConfig,
     transportNetwork = beamServices.beamScenario.transportNetwork,
     vehicleTypes = beamServices.beamScenario.vehicleTypes,
@@ -84,12 +84,12 @@ class ApproxPhysSim(
 
   def run(travelTime: TravelTime): TravelTime = {
     val carTravelTimeWriter: CsvWriter = {
-      val fileName = controlerIO.getIterationFilename(agentSimIterationNumber, "MultiJDEQSim_car_travel_time.csv")
+      val fileName = controllerIO.getIterationFilename(agentSimIterationNumber, "MultiJDEQSim_car_travel_time.csv")
       new CsvWriter(fileName, Array("iteration", "avg", "median", "p75", "p95", "p99", "min", "max"))
     }
     val reroutedTravelTimeWriter: CsvWriter = {
       val fileName =
-        controlerIO.getIterationFilename(agentSimIterationNumber, "MultiJDEQSim_rerouted_car_travel_time.csv")
+        controllerIO.getIterationFilename(agentSimIterationNumber, "MultiJDEQSim_rerouted_car_travel_time.csv")
       new CsvWriter(fileName, Array("iteration", "avg", "median", "p75", "p95", "p99", "min", "max"))
     }
     try {
@@ -147,7 +147,7 @@ class ApproxPhysSim(
         jdeqSimScenario,
         finalPopulation,
         beamServices,
-        controlerIO,
+        controllerIO,
         isCACCVehicle,
         beamConfigChangesObservable,
         agentSimIterationNumber
@@ -167,7 +167,7 @@ class ApproxPhysSim(
         )
       )
       carTravelTimeWriter.flush()
-      val rerouter = new Rerouter(workerParams, beamServices)
+      val rerouter = new ReRouter(workerParams, beamServices)
       val before = rerouter.printRouteStats(s"Before rerouting at $currentIter iter", finalPopulation)
       //        logger.info("AverageCarTravelTime before replanning")
       //        PhysSim.printAverageCarTravelTime(getCarPeople(population))

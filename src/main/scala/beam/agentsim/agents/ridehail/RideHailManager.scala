@@ -64,6 +64,7 @@ import org.apache.commons.math3.distribution.UniformRealDistribution
 import org.matsim.api.core.v01.population.{Activity, Person}
 import org.matsim.api.core.v01.{Coord, Id, Scenario}
 import org.matsim.core.api.experimental.events.EventsManager
+import org.matsim.core.controler.OutputDirectoryHierarchy
 //import org.matsim.vehicles.Vehicle
 
 import scala.collection.JavaConverters._
@@ -80,8 +81,6 @@ object RideHailManager {
   val INITIAL_RIDE_HAIL_LOCATION_UNIFORM_RANDOM = "UNIFORM_RANDOM"
   val INITIAL_RIDE_HAIL_LOCATION_ALL_AT_CENTER = "ALL_AT_CENTER"
   val INITIAL_RIDE_HAIL_LOCATION_ALL_IN_CORNER = "ALL_IN_CORNER"
-
-  sealed trait RideHailServiceStatus
 
   case object NotifyIterationEnds
   case class RecoverFromStuckness(tick: Int)
@@ -164,10 +163,9 @@ object RideHailManager {
       *
       * @return list of data description objects
       */
-    override def getOutputDataDescriptions: util.List[OutputDataDescription] = {
-      val outputFilePath =
-        GraphsStatsAgentSimEventsListener.CONTROLLER_IO.getIterationFilename(0, fileBaseName + ".csv")
-      val outputDirPath = GraphsStatsAgentSimEventsListener.CONTROLLER_IO.getOutputPath
+    override def getOutputDataDescriptions(ioController: OutputDirectoryHierarchy): util.List[OutputDataDescription] = {
+      val outputFilePath = ioController.getIterationFilename(0, fileBaseName + ".csv")
+      val outputDirPath = ioController.getOutputPath
       val relativePath = outputFilePath.replace(outputDirPath, "")
       val list = new util.ArrayList[OutputDataDescription]
       list.add(
@@ -387,28 +385,30 @@ class RideHailManager(
       val meanLogShiftDurationHours = 1.02
       val stdLogShiftDurationHours = 0.44
       var equivalentNumberOfDrivers = 0.0
-      val persons: Array[Person] = rand.shuffle(scenario.getPopulation.getPersons.values().asScala).toArray
-      val activityEndTimes: ArrayBuffer[Int] = new ArrayBuffer[Int]()
-      val vehiclesAdjustment = VehiclesAdjustment.getVehicleAdjustment(beamScenario)
-      scenario.getPopulation.getPersons.asScala.foreach(
-        _._2.getSelectedPlan.getPlanElements.asScala
+
+      val personsWithMoreThanOneActivity =
+        scenario.getPopulation.getPersons.values().asScala.filter(_.getSelectedPlan.getPlanElements.size > 1)
+      val persons: Array[Person] = rand.shuffle(personsWithMoreThanOneActivity).toArray
+
+      val activityEndTimes: Array[Int] = persons.flatMap {
+        _.getSelectedPlan.getPlanElements.asScala
           .collect {
             case activity: Activity if activity.getEndTime.toInt > 0 => activity.getEndTime.toInt
           }
-          .foreach(activityEndTimes += _)
-      )
+      }
+
+      val vehiclesAdjustment = VehiclesAdjustment.getVehicleAdjustment(beamScenario)
       val maxActivityEndTime = activityEndTimes.max
       val fleetData: ArrayBuffer[RideHailFleetInitializer.RideHailAgentInputData] = new ArrayBuffer
 
       var idx = 0
       while (equivalentNumberOfDrivers < numRideHailAgents.toDouble) {
         if (idx >= persons.length) {
-          log.error(
-            "Can't have more ridehail drivers than total population"
-          )
+          log.error("Can't have more ridehail drivers than total population")
         } else {
           try {
             val person = persons(idx)
+
             val vehicleType = vehiclesAdjustment
               .sampleRideHailVehicleTypes(
                 numVehicles = 1,
@@ -425,7 +425,9 @@ class RideHailManager(
             val rideInitialLocation: Location = getRideInitLocation(person)
             if (vehicleType.automationLevel < 4) {
               val shiftDuration =
-                math.round(math.exp(rand.nextGaussian() * stdLogShiftDurationHours + meanLogShiftDurationHours) * 3600)
+                math.round(
+                  math.exp(rand.nextGaussian() * stdLogShiftDurationHours + meanLogShiftDurationHours) * 3600
+                )
               val shiftMidPointTime = activityEndTimes(rand.nextInt(activityEndTimes.length))
               val shiftStartTime = max(shiftMidPointTime - (shiftDuration / 2).toInt, 10)
               val shiftEndTime = min(shiftMidPointTime + (shiftDuration / 2).toInt, maxActivityEndTime)
@@ -874,6 +876,7 @@ class RideHailManager(
         destinationUTM = stall.locationUTM,
         departureTime = agentLocation.currentLocationUTM.time,
         withTransit = false,
+        personId = None,
         streetVehicles = Vector(agentLocation.toStreetVehicle)
       )
       val futureRideHail2ParkingRouteRequest = router ? routingRequest
@@ -968,8 +971,6 @@ class RideHailManager(
   }
 
   def throwRideHailFleetStateEvent(tick: Int): Unit = {
-    val tick = modifyPassengerScheduleManager.getCurrentTick.get
-
     val inServiceRideHailVehicles = vehicleManager.inServiceRideHailVehicles.values
     val inServiceRideHailStateEvents = calculateCavEvs(inServiceRideHailVehicles, "InService", tick)
     eventsManager.processEvent(inServiceRideHailStateEvents)
@@ -1317,6 +1318,7 @@ class RideHailManager(
       request.pickUpLocationUTM,
       requestTime,
       withTransit = false,
+      Some(request.customer.personId),
       Vector(rideHailVehicleAtOrigin)
     )
 // route from customer to destination
@@ -1325,6 +1327,7 @@ class RideHailManager(
       request.destinationUTM,
       requestTime,
       withTransit = false,
+      Some(request.customer.personId),
       Vector(rideHailVehicleAtPickup)
     )
 
@@ -1851,6 +1854,7 @@ class RideHailManager(
           destinationUTM = destinationLocation,
           departureTime = tick,
           withTransit = false,
+          personId = None,
           streetVehicles = Vector(rideHailVehicleAtOrigin)
         )
         val futureRideHailAgent2CustomerResponse = router ? routingRequest
@@ -1903,7 +1907,7 @@ class RideHailManager(
           val activityLocations: List[Location] =
             person.getSelectedPlan.getPlanElements.asScala
               .collect {
-                case activity: Activity => activity.getCoord()
+                case activity: Activity => activity.getCoord
               }
               .toList
               .dropRight(1)

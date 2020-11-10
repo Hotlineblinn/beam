@@ -83,12 +83,14 @@ object RideHailMatching {
       s"${requests.size} requests and this schedule: ${schedule.map(_.toString).mkString("\n")}"
   }
 
+  val geodeticCalculatorPerThread: ThreadLocal[GeodeticCalculator] =
+    ThreadLocal.withInitial[GeodeticCalculator](() => new GeodeticCalculator(DefaultGeographicCRS.WGS84))
+
   def checkAngle(origin: Coord, dest1: Coord, dest2: Coord)(implicit services: BeamServices): Boolean = {
-    val crs = DefaultGeographicCRS.WGS84
+    val calc = geodeticCalculatorPerThread.get()
     val orgWgs = services.geo.utm2Wgs.transform(origin)
     val dst1Wgs = services.geo.utm2Wgs.transform(dest1)
     val dst2Wgs = services.geo.utm2Wgs.transform(dest2)
-    val calc = new GeodeticCalculator(crs)
     val gf = new GeometryFactory()
     val point1 = gf.createPoint(new Coordinate(orgWgs.getX, orgWgs.getY))
     calc.setStartingGeographicPoint(point1.getX, point1.getY)
@@ -121,7 +123,7 @@ object RideHailMatching {
   }
 
   def getTimeDistanceAndCost(src: MobilityRequest, dst: MobilityRequest, beamServices: BeamServices): ODSkimmer.Skim = {
-    Skims.od_skimmer.getTimeDistanceAndCost(
+    beamServices.skims.od_skimmer.getTimeDistanceAndCost(
       src.activity.getCoord,
       dst.activity.getCoord,
       src.baselineNonPooledTime,
@@ -242,7 +244,7 @@ object RideHailMatching {
     val p1Act1: Activity = PopulationUtils.createActivityFromCoord(s"${vehiclePersonId.personId}Act1", src)
     p1Act1.setEndTime(departureTime)
     val p1Act2: Activity = PopulationUtils.createActivityFromCoord(s"${vehiclePersonId.personId}Act2", dst)
-    val skim = Skims.od_skimmer
+    val skim = beamServices.skims.od_skimmer
       .getTimeDistanceAndCost(
         p1Act1.getCoord,
         p1Act2.getCoord,

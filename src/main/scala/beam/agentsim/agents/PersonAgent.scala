@@ -158,8 +158,8 @@ object PersonAgent {
       copy(passengerSchedule = newPassengerSchedule)
 
     override def withCurrentLegPassengerScheduleIndex(
-      currentLegPassengerScheduleIndex: Int
-    ): DrivingData = copy(currentLegPassengerScheduleIndex = currentLegPassengerScheduleIndex)
+      newLegPassengerScheduleIndex: Int
+    ): DrivingData = copy(currentLegPassengerScheduleIndex = newLegPassengerScheduleIndex)
 
     override def hasParkingBehaviors: Boolean = true
 
@@ -342,7 +342,7 @@ class PersonAgent(
             .foldLeft(tomorrowFirstLegDistance) { (sum, pair) =>
               sum + Math
                 .ceil(
-                  Skims.od_skimmer
+                  beamServices.skims.od_skimmer
                     .getTimeDistanceAndCost(
                       pair.head.activity.getCoord,
                       pair.last.activity.getCoord,
@@ -435,11 +435,11 @@ class PersonAgent(
     case Event(TriggerWithId(ActivityEndTrigger(tick), triggerId), data: BasePersonData) =>
       nextActivity(data) match {
         case None =>
-          logger.warn(s"didn't get nextActivity, PersonAgent:438")
+          logger.warn("didn't get nextActivity, PersonAgent:438")
 
           // if we still have a BEV/PHEV that is connected to a charging point,
           // we assume that they will charge until the end of the simulation and throwing events accordingly
-          (beamVehicles ++ forgottenBeamVehicles).foreach(idVehicleOrTokenTuple => {
+          (beamVehicles ++ potentiallyChargingBeamVehicles).foreach(idVehicleOrTokenTuple => {
             beamScenario.privateVehicles
               .get(idVehicleOrTokenTuple._1)
               .foreach(beamvehicle => {
@@ -716,7 +716,7 @@ class PersonAgent(
   when(TryingToBoardVehicle) {
     case Event(Boarded(vehicle), basePersonData: BasePersonData) =>
       beamVehicles.put(vehicle.id, ActualVehicle(vehicle))
-      forgottenBeamVehicles.remove(vehicle.id)
+      potentiallyChargingBeamVehicles.remove(vehicle.id)
       goto(ProcessingNextLegOrStartActivity)
     case Event(NotAvailable, basePersonData: BasePersonData) =>
       log.debug("{} replanning because vehicle not available when trying to board")
@@ -1002,7 +1002,7 @@ class PersonAgent(
               case Some(personalVehId) =>
                 val personalVeh = beamVehicles(personalVehId).asInstanceOf[ActualVehicle].vehicle
                 if (activity.getType.equals("Home")) {
-                  forgottenBeamVehicles.put(personalVeh.id, beamVehicles(personalVeh.id))
+                  potentiallyChargingBeamVehicles.put(personalVeh.id, beamVehicles(personalVeh.id))
                   beamVehicles -= personalVeh.id
                   personalVeh.getManager.get ! ReleaseVehicle(personalVeh)
                   None
@@ -1079,12 +1079,13 @@ class PersonAgent(
       )
     case Event(Finish, _) =>
       if (stateName == Moving) {
-        log.warning("Still travelling at end of simulation.")
-        log.warning(s"Events leading up to this point:\n\t${getLog.mkString("\n\t")}")
+        log.warning(s"$id is still travelling at end of simulation.")
+        log.warning(s"$id events leading up to this point:\n\t${getLog.mkString("\n\t")}")
       } else if (stateName == PerformingActivity) {
-        logger.warn(s"Performing Activity at end of simulation")
+        logger.debug(s"$id is performing Activity at end of simulation")
+        logger.warn("Performing Activity at end of simulation")
       } else {
-        logger.warn(s"Received Finish while in state: ${stateName}")
+        logger.warn(s"$id has received Finish while in state: ${stateName}")
       }
       stop
     case Event(
