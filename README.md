@@ -1,5 +1,6 @@
 # BEAM
 
+<<<<<<< HEAD
 [![Build Status](https://beam-ci.tk/job/master/badge/icon)](https://beam-ci.tk/job/master/)
 
 [![Documentation Status](https://readthedocs.org/projects/beam/badge/?version=latest)](http://beam.readthedocs.io/en/latest/?badge=latest)
@@ -23,3 +24,6 @@ check out the [developer guide](http://beam.readthedocs.io/en/latest/developers.
 ## Project website: 
 http://beam.lbl.gov/
 
+=======
+### 
+>>>>>>> 0160d45ab (test files)
