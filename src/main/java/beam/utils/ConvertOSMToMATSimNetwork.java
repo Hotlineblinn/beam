@@ -21,7 +21,7 @@ public class ConvertOSMToMATSimNetwork {
         // creating an empty matsim network
         Network network = sc.getNetwork();
         // The EPSG:3161 is the Lambert projection for Ontario
-        CoordinateTransformation ct = TransformationFactory.getCoordinateTransformation(TransformationFactory.WGS84, "EPSG:3161");
+        CoordinateTransformation ct = TransformationFactory.getCoordinateTransformation(TransformationFactory.WGS84, "EPSG:4326");
         OsmNetworkReader osmReader = new OsmNetworkReader(network, ct);
 
         osmReader.setKeepPaths(false);
@@ -32,8 +32,8 @@ public class ConvertOSMToMATSimNetwork {
 //		osmReader.setHierarchyLayer(51.671, 2.177, 49.402, 6.764, 4);
 
         // converting the merged OSM network into matsim format
-        osmReader.parse(args[0] + "/ontario-motorways-trunks.osm");
-        new NetworkWriter(network).write(args[0] + "/ontario-motorways-trunks.xml");
+        osmReader.parse(args[0] + "/210222_merged_network.osm");
+        new NetworkWriter(network).write(args[0] + "/210222_network.xml");
 
         // writing out a cleaned matsim network and loading it
         // into the scenario
